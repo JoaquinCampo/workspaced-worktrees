@@ -32,7 +32,8 @@ If the file does **not** exist:
       "install": "<FILL IN: e.g. npm install, uv sync, pnpm install>",
       "start": "<FILL IN: e.g. npm run dev --port {port}>",
       "env_files": [".env"],
-      "env_patches": {}
+      "env_patches": {},
+      "cache_dirs": ["<FILL IN: e.g. .venv, node_modules>"]
     }
   ]
 }
@@ -102,7 +103,17 @@ cp CLAUDE.md "$WORKSPACE/" 2>/dev/null || true
 cp -r .claude "$WORKSPACE/" 2>/dev/null || true
 ```
 
-## Step 7: Install dependencies
+## Step 7: Copy cached dependency directories
+
+For each repo in the config, if `repo.cache_dirs` is defined, copy each directory from the original repo into the worktree **before** installing. This avoids downloading everything from scratch.
+
+```bash
+cp -r <repo.name>/<cache_dir> "${WORKSPACE}/<repo.name>/<cache_dir>"
+```
+
+Skip any that don't exist in the original.
+
+## Step 8: Install dependencies
 
 For each repo in the config:
 
@@ -110,7 +121,9 @@ For each repo in the config:
 cd "${WORKSPACE}/<repo.name>" && <repo.install>
 ```
 
-## Step 8: Copy and patch environment files
+This should be fast since cached directories were already copied.
+
+## Step 9: Copy and patch environment files
 
 For each repo in the config:
 
@@ -121,7 +134,7 @@ For each repo in the config:
 
 2. Apply `repo.env_patches`: for each key-value pair, find and replace that key's value in the worktree's env file. Values can contain `{<repo_name>.port}` placeholders — replace them with the actual assigned port for that repo.
 
-## Step 9: Report
+## Step 10: Report
 
 Print a summary:
 
