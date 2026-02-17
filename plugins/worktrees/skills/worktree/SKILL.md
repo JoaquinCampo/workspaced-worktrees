@@ -142,39 +142,90 @@ For each repo in the config:
 
 2. Apply `repo.env_patches`: for each key-value pair, find and replace that key's value in the worktree's env file. Values can contain `{<repo_name>.port}` placeholders — replace them with the actual assigned port for that repo.
 
-## Step 10: Report
+## Step 10: Generate workspace scripts
+
+Create executable scripts in the workspace root so agents (or users) can start/stop servers without knowing the details.
+
+### `start.sh`
+
+```bash
+#!/usr/bin/env bash
+set -e
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Start each repo's server in the background
+<for each repo>
+echo "Starting <repo.name> on port <assigned_port>..."
+(cd "$SCRIPT_DIR/<repo.name>" && <repo.start with {port} replaced>) &
+<end for>
+
+echo ""
+echo "All servers started. PIDs logged above."
+echo "Run ./stop.sh to shut them down."
+wait
+```
+
+### `stop.sh`
+
+```bash
+#!/usr/bin/env bash
+
+<for each repo>
+echo "Stopping port <assigned_port>..."
+lsof -ti :<assigned_port> | xargs kill 2>/dev/null || true
+<end for>
+
+echo "All servers stopped."
+```
+
+### `cleanup.sh`
+
+```bash
+#!/usr/bin/env bash
+set -e
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PARENT_DIR="$(dirname "$SCRIPT_DIR")"
+WORKSPACE_NAME="$(basename "$SCRIPT_DIR")"
+
+# Stop any running servers
+"$SCRIPT_DIR/stop.sh" 2>/dev/null || true
+
+# Remove worktrees
+<for each repo>
+echo "Removing worktree <repo.name>..."
+git -C "$PARENT_DIR/<original_project>/<repo.name>" worktree remove "$SCRIPT_DIR/<repo.name>" 2>/dev/null || true
+<end for>
+
+# Remove workspace directory
+echo "Removing workspace..."
+rm -rf "$SCRIPT_DIR"
+echo "Cleanup complete."
+```
+
+Make all scripts executable:
+```bash
+chmod +x "${WORKSPACE}/start.sh" "${WORKSPACE}/stop.sh" "${WORKSPACE}/cleanup.sh"
+```
+
+## Step 11: Report
 
 Print a summary:
 
 ```
 Workspace ready for branch: $ARGUMENTS
   Root: <WORKSPACE>/
-```
 
-For each repo:
-```
+<for each repo>
   <repo.name>:
     Path: <WORKSPACE>/<repo.name>
     Port: <assigned_port>
-    Start: <repo.start with {port} replaced>
-```
+<end for>
 
-Then print:
-```
+Scripts:
+  ./start.sh    — start all servers
+  ./stop.sh     — stop all servers
+  ./cleanup.sh  — stop servers, remove worktrees, delete workspace
+
 Launch agent:
   cd <WORKSPACE> && claude --dangerously-skip-permissions
-```
-
-## Cleanup
-
-Print cleanup instructions:
-
-For each repo:
-```bash
-cd <repo.name> && git worktree remove "<WORKSPACE>/<repo.name>"
-```
-
-Then:
-```bash
-rm -rf "<WORKSPACE>"
 ```
