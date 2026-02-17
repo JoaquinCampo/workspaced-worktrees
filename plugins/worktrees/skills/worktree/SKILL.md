@@ -105,10 +105,16 @@ cp -r .claude "$WORKSPACE/" 2>/dev/null || true
 
 ## Step 7: Copy cached dependency directories
 
-For each repo in the config, if `repo.cache_dirs` is defined, copy each directory from the original repo into the worktree **before** installing. This avoids downloading everything from scratch.
+For each repo in the config, if `repo.cache_dirs` is defined, clone each directory from the original repo into the worktree **before** installing. This avoids downloading everything from scratch.
 
+On macOS (APFS), use `cp -Rc` for instant copy-on-write clones:
 ```bash
-cp -r <repo.name>/<cache_dir> "${WORKSPACE}/<repo.name>/<cache_dir>"
+cp -Rc <repo.name>/<cache_dir> "${WORKSPACE}/<repo.name>/<cache_dir>"
+```
+
+On Linux, use hardlinks for speed:
+```bash
+cp -al <repo.name>/<cache_dir> "${WORKSPACE}/<repo.name>/<cache_dir>"
 ```
 
 Skip any that don't exist in the original.
