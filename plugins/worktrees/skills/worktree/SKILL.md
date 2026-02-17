@@ -33,7 +33,7 @@ If the file does **not** exist:
       "start": "<FILL IN: e.g. npm run dev --port {port}>",
       "env_files": [".env"],
       "env_patches": {},
-      "cache_dirs": ["<FILL IN: e.g. .venv, node_modules>"]
+      "cache_dirs": []
     }
   ]
 }
@@ -105,7 +105,7 @@ cp -r .claude "$WORKSPACE/" 2>/dev/null || true
 
 ## Step 7: Copy cached dependency directories
 
-For each repo in the config, if `repo.cache_dirs` is defined, clone each directory from the original repo into the worktree **before** installing. This avoids downloading everything from scratch.
+For each repo in the config, if `repo.cache_dirs` is defined and non-empty, clone each directory from the original repo into the worktree **before** installing. This avoids downloading everything from scratch.
 
 On macOS (APFS), use `cp -Rc` for instant copy-on-write clones:
 ```bash
@@ -118,6 +118,8 @@ cp -al <repo.name>/<cache_dir> "${WORKSPACE}/<repo.name>/<cache_dir>"
 ```
 
 Skip any that don't exist in the original.
+
+**Hint for users configuring `cache_dirs`:** APFS clones and hardlinks are fast for directories with few large files (e.g., `.venv`, `vendor/`), but slow for directories with many small files (e.g., `node_modules`). Package managers with global caches (pnpm, yarn berry, uv) often make a fresh install fast enough that cloning is unnecessary. When in doubt, leave `cache_dirs` empty and let the package manager handle it.
 
 ## Step 8: Install dependencies
 
