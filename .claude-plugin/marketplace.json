@@ -1,5 +1,14 @@
 {
   "name": "workspaced-worktrees",
   "description": "Parallel branch development with git worktrees for monorepos",
-  "plugins": ["plugins/worktrees"]
+  "owner": {
+    "name": "Joaquin Campo"
+  },
+  "plugins": [
+    {
+      "name": "worktrees",
+      "source": "./plugins/worktrees",
+      "description": "Create isolated worktree workspaces for parallel feature development across multiple repos in a monorepo."
+    }
+  ]
 }
