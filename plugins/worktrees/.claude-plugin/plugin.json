@@ -1,0 +1,5 @@
+{
+  "name": "worktrees",
+  "description": "Create isolated worktree workspaces for parallel feature development across multiple repos in a monorepo.",
+  "version": "0.1.0"
+}

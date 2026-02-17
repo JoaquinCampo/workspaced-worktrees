@@ -1,0 +1,5 @@
+{
+  "name": "workspaced-worktrees",
+  "description": "Parallel branch development with git worktrees for monorepos",
+  "plugins": ["plugins/worktrees"]
+}
