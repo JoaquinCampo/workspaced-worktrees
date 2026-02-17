@@ -103,7 +103,54 @@ cp CLAUDE.md "$WORKSPACE/" 2>/dev/null || true
 cp -r .claude "$WORKSPACE/" 2>/dev/null || true
 ```
 
-## Step 7: Copy cached dependency directories
+## Step 7: Generate worktree rules
+
+Create `${WORKSPACE}/.claude/rules/worktree.md` so the agent automatically knows its environment. This file is auto-loaded into context.
+
+Generate the file with the following content (replace all placeholders with actual values):
+
+```markdown
+# Worktree Workspace
+
+You are working in an isolated worktree workspace on branch `<branch_name>`.
+
+## Servers
+
+Start all servers:
+\`\`\`bash
+./start.sh
+\`\`\`
+
+Stop all servers:
+\`\`\`bash
+./stop.sh
+\`\`\`
+
+<for each repo>
+### <repo.name>
+- Path: <repo.name>/
+- Port: <assigned_port>
+- Start individually: cd <repo.name> && <repo.start with {port} replaced>
+<end for>
+
+## Rules
+
+- **No migrations.** Never run migration tools (alembic, prisma migrate, knex migrate, etc.) or any command that auto-runs migrations on startup. The database is shared across all worktrees.
+- **Schema changes = blocker.** If your feature requires database schema changes, STOP and report back to the user.
+- **Don't push** to remote unless explicitly asked.
+- **Commit freely** to your feature branch — commits stay local until pushed.
+
+## Cleanup
+
+When done, the user can run `./cleanup.sh` from the workspace root to stop servers, remove worktrees, and delete this workspace.
+```
+
+Make sure the `.claude/rules/` directory exists:
+```bash
+mkdir -p "${WORKSPACE}/.claude/rules"
+```
+
+## Step 8: Copy cached dependency directories
 
 For each repo in the config, if `repo.cache_dirs` is defined and non-empty, clone each directory from the original repo into the worktree **before** installing. This avoids downloading everything from scratch.
 
@@ -121,7 +168,7 @@ Skip any that don't exist in the original.
 
 **Hint for users configuring `cache_dirs`:** APFS clones and hardlinks are fast for directories with few large files (e.g., `.venv`, `vendor/`), but slow for directories with many small files (e.g., `node_modules`). Package managers with global caches (pnpm, yarn berry, uv) often make a fresh install fast enough that cloning is unnecessary. When in doubt, leave `cache_dirs` empty and let the package manager handle it.
 
-## Step 8: Install dependencies
+## Step 9: Install dependencies
 
 For each repo in the config:
 
@@ -131,7 +178,7 @@ cd "${WORKSPACE}/<repo.name>" && <repo.install>
 
 This should be fast since cached directories were already copied.
 
-## Step 9: Copy and patch environment files
+## Step 10: Copy and patch environment files
 
 For each repo in the config:
 
@@ -142,7 +189,7 @@ For each repo in the config:
 
 2. Apply `repo.env_patches`: for each key-value pair, find and replace that key's value in the worktree's env file. Values can contain `{<repo_name>.port}` placeholders — replace them with the actual assigned port for that repo.
 
-## Step 10: Generate workspace scripts
+## Step 11: Generate workspace scripts
 
 Create executable scripts in the workspace root so agents (or users) can start/stop servers without knowing the details.
 
@@ -207,7 +254,7 @@ Make all scripts executable:
 chmod +x "${WORKSPACE}/start.sh" "${WORKSPACE}/stop.sh" "${WORKSPACE}/cleanup.sh"
 ```
 
-## Step 11: Report
+## Step 12: Report
 
 Print a summary:
 
