@@ -21,7 +21,8 @@ Read `.claude/worktree.json` from the project root.
 If the file does **not** exist:
 
 1. Scan the current directory for subdirectories that are git repos (`[ -d "$dir/.git" ]`)
-2. Create a template `.claude/worktree.json` populated with the discovered repos:
+2. **Auto-detect** install/start commands by reading `package.json`, `pyproject.toml`, `Makefile`, etc. in each repo. Also detect cross-service relationships (e.g., a frontend env var pointing to a backend API).
+3. Create `.claude/worktree.json` populated with the discovered repos. Use what you detected — only leave `<FILL IN>` placeholders for fields you truly cannot determine:
 
 ```json
 {
@@ -29,23 +30,30 @@ If the file does **not** exist:
     {
       "name": "<detected-dir>",
       "port": 8000,
-      "install": "<FILL IN: e.g. npm install, uv sync, pnpm install>",
-      "start": "<FILL IN: e.g. npm run dev --port {port}>",
+      "install": "uv sync",
+      "start": "uv run uvicorn app.main:app --port {port}",
       "env_files": [".env"],
-      "env_patches": {},
-      "cache_dirs": []
+      "env_patches": {
+        "NEXT_PUBLIC_API_URL": "{backend.url}"
+      },
+      "cache_dirs": [".venv"]
     }
   ]
 }
 ```
 
-3. Print:
-```
-Created .claude/worktree.json with detected repos.
-Please review and fill in the install/start commands, then run /worktree again.
-```
+**Important:** For `env_patches` that reference other repos, always use `{<repo_name>.url}` placeholders. These resolve correctly in both portless and fallback modes. Never hardcode `http://localhost:{<repo_name>.port}` — use `{<repo_name>.url}` instead.
 
-4. **Stop here.** Do not create any worktrees.
+**Note on `start` commands:** The `start` field is the raw server command with a `{port}` placeholder. Do **not** include `portless` in the start command — portless wrapping is applied automatically when generating workspace scripts (Step 11).
+
+4. If any `<FILL IN>` placeholders remain, print:
+```
+Created .claude/worktree.json — some fields need manual input.
+Please fill in the <FILL IN> placeholders, then run /worktree again.
+```
+**Stop here.** Do not create any worktrees.
+
+5. If all fields are filled (no `<FILL IN>` placeholders), print the config as a table and **proceed to Step 2** immediately.
 
 ---
 
