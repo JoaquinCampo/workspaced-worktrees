@@ -64,7 +64,32 @@ WORKSPACE="../$(basename $(pwd))-wt-${SLUG}"
 mkdir -p "$WORKSPACE"
 ```
 
-## Step 4: Assign unique ports
+## Step 4: Detect portless and assign service endpoints
+
+Check if [portless](https://github.com/vercel-labs/portless) is installed:
+
+```bash
+command -v portless &>/dev/null
+```
+
+### If portless is installed → Portless mode
+
+For each repo, derive a **portless service name**:
+
+```
+SERVICE_NAME="<repo.name>-${SLUG}"
+```
+
+Example: repo `backend-parsanai` on branch `feature/auth` → `backend-parsanai-feature-auth`
+
+Build a URL map for env patching:
+```
+repo.name → http://<SERVICE_NAME>.localhost:1355
+```
+
+No port assignment, offset counting, or conflict resolution needed. Skip the fallback section below.
+
+### If portless is NOT installed → Fallback mode
 
 For each repo in the config, calculate its port:
 
@@ -76,7 +101,10 @@ The port for each repo is `repo.port + OFFSET`.
 
 If any assigned port is busy (`lsof -i :<port>`), increment all ports by 1 and check again.
 
-Keep a map of `repo.name → assigned_port` for use in env patching.
+Build a URL map for env patching:
+```
+repo.name → http://localhost:<assigned_port>
+```
 
 ## Step 5: Create worktrees
 
@@ -107,7 +135,52 @@ cp -r .claude "$WORKSPACE/" 2>/dev/null || true
 
 Create `${WORKSPACE}/.claude/rules/worktree.md` so the agent automatically knows its environment. This file is auto-loaded into context.
 
+Make sure the `.claude/rules/` directory exists:
+```bash
+mkdir -p "${WORKSPACE}/.claude/rules"
+```
+
 Generate the file with the following content (replace all placeholders with actual values):
+
+### Portless mode
+
+```markdown
+# Worktree Workspace
+
+You are working in an isolated worktree workspace on branch `<branch_name>`.
+
+## Servers
+
+Start all servers:
+\`\`\`bash
+./start.sh
+\`\`\`
+
+Stop all servers:
+\`\`\`bash
+./stop.sh
+\`\`\`
+
+<for each repo>
+### <repo.name>
+- Path: <repo.name>/
+- URL: http://<service_name>.localhost:1355
+- Start individually: cd <repo.name> && portless <service_name> <repo.start with {port} replaced by \$PORT>
+<end for>
+
+## Rules
+
+- **No migrations.** Never run migration tools (alembic, prisma migrate, knex migrate, etc.) or any command that auto-runs migrations on startup. The database is shared across all worktrees.
+- **Schema changes = blocker.** If your feature requires database schema changes, STOP and report back to the user.
+- **Don't push** to remote unless explicitly asked.
+- **Commit freely** to your feature branch — commits stay local until pushed.
+
+## Cleanup
+
+When done, the user can run `./cleanup.sh` from the workspace root to stop servers, remove worktrees, and delete this workspace.
+```
+
+### Fallback mode
 
 ```markdown
 # Worktree Workspace
@@ -143,11 +216,6 @@ Stop all servers:
 ## Cleanup
 
 When done, the user can run `./cleanup.sh` from the workspace root to stop servers, remove worktrees, and delete this workspace.
-```
-
-Make sure the `.claude/rules/` directory exists:
-```bash
-mkdir -p "${WORKSPACE}/.claude/rules"
 ```
 
 ## Step 8: Copy cached dependency directories
@@ -187,13 +255,51 @@ For each repo in the config:
    cp <repo.name>/<env_file> "${WORKSPACE}/<repo.name>/<env_file>" 2>/dev/null || true
    ```
 
-2. Apply `repo.env_patches`: for each key-value pair, find and replace that key's value in the worktree's env file. Values can contain `{<repo_name>.port}` placeholders — replace them with the actual assigned port for that repo.
+2. Apply `repo.env_patches`: for each key-value pair, find and replace that key's value in the worktree's env file. Values support two kinds of placeholders:
+
+   - **`{<repo_name>.url}`** — resolves to the full URL from the URL map built in Step 4. Works in both modes. **Recommended.**
+   - **`{<repo_name>.port}`** — resolves to the assigned port number in fallback mode. In portless mode, if the value matches the pattern `http://localhost:{<repo_name>.port}`, replace the **entire pattern** with the portless URL from the URL map. This ensures backward compatibility with existing configs.
 
 ## Step 11: Generate workspace scripts
 
 Create executable scripts in the workspace root so agents (or users) can start/stop servers without knowing the details.
 
-### `start.sh`
+### Portless mode
+
+#### `start.sh`
+
+```bash
+#!/usr/bin/env bash
+set -e
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+<for each repo>
+echo "Starting <repo.name> → http://<service_name>.localhost:1355"
+(cd "$SCRIPT_DIR/<repo.name>" && portless <service_name> <repo.start with {port} replaced by \$PORT>) &
+<end for>
+
+echo ""
+echo "All servers started."
+echo "Run ./stop.sh to shut them down."
+wait
+```
+
+#### `stop.sh`
+
+```bash
+#!/usr/bin/env bash
+
+<for each repo>
+echo "Stopping <service_name>..."
+pkill -f "portless <service_name>" 2>/dev/null || true
+<end for>
+
+echo "All servers stopped."
+```
+
+### Fallback mode
+
+#### `start.sh`
 
 ```bash
 #!/usr/bin/env bash
@@ -212,7 +318,7 @@ echo "Run ./stop.sh to shut them down."
 wait
 ```
 
-### `stop.sh`
+#### `stop.sh`
 
 ```bash
 #!/usr/bin/env bash
@@ -225,7 +331,7 @@ lsof -ti :<assigned_port> | xargs kill 2>/dev/null || true
 echo "All servers stopped."
 ```
 
-### `cleanup.sh`
+### Both modes: `cleanup.sh`
 
 ```bash
 #!/usr/bin/env bash
@@ -256,7 +362,28 @@ chmod +x "${WORKSPACE}/start.sh" "${WORKSPACE}/stop.sh" "${WORKSPACE}/cleanup.sh
 
 ## Step 12: Report
 
-Print a summary:
+### Portless mode
+
+```
+Workspace ready for branch: $ARGUMENTS
+  Root: <WORKSPACE>/
+
+<for each repo>
+  <repo.name>:
+    Path: <WORKSPACE>/<repo.name>
+    URL:  http://<service_name>.localhost:1355
+<end for>
+
+Scripts:
+  ./start.sh    — start all servers
+  ./stop.sh     — stop all servers
+  ./cleanup.sh  — stop servers, remove worktrees, delete workspace
+
+Launch agent:
+  cd <WORKSPACE> && claude --dangerously-skip-permissions
+```
+
+### Fallback mode
 
 ```
 Workspace ready for branch: $ARGUMENTS
@@ -272,6 +399,9 @@ Scripts:
   ./start.sh    — start all servers
   ./stop.sh     — stop all servers
   ./cleanup.sh  — stop servers, remove worktrees, delete workspace
+
+Tip: Install portless for stable named URLs → npm i -g portless
+     https://github.com/vercel-labs/portless
 
 Launch agent:
   cd <WORKSPACE> && claude --dangerously-skip-permissions
